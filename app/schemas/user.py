@@ -56,10 +56,13 @@ class UserCreate(UserBase):
 
     @model_validator(mode='after')
     def validate_password_strength(self) -> "UserCreate":
-        """Validate password strength requirements"""
+        """
+        Validate password strength requirements.
+
+        The minimum length is enforced by the field's min_length constraint,
+        which runs first, so there is no length check here.
+        """
         password = self.password
-        if len(password) < 8:
-            raise ValueError("Password must be at least 8 characters long")
         if not any(char.isupper() for char in password):
             raise ValueError("Password must contain at least one uppercase letter")
         if not any(char.islower() for char in password):

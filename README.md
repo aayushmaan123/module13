@@ -119,6 +119,9 @@ activate the virtual environment first. The database must be running
 # Everything (unit + integration + e2e) with coverage
 pytest
 
+# The same run CI performs, including the 100% coverage gate
+pytest --cov=app --cov-report=term-missing --cov-fail-under=100
+
 # Unit tests only
 pytest tests/unit/
 
@@ -137,6 +140,23 @@ To watch the browser instead of running headless, set `headless=False` in the
 
 The test server's output is written to `test-server.log` in the project root,
 which is useful when a test fails for a server-side reason.
+
+### Coverage
+
+`app/` is at **100% statement coverage** (645 statements), enforced in CI by
+`--cov-fail-under=100`. The suite is 204 tests plus 1 skipped (a `slow`-marked
+test, which runs with `--run-slow`).
+
+| Layer | Location | Covers |
+|-------|----------|--------|
+| Unit | `tests/unit/` | Operations, model and schema guard clauses |
+| Integration | `tests/integration/` | Routes in-process via `TestClient`, JWT internals, Redis blacklist, dependencies |
+| E2E (API) | `tests/e2e/test_fastapi_calculator.py` | Live server over HTTP |
+| E2E (browser) | `tests/e2e/test_auth_playwright.py` | Register and login pages in Chromium |
+
+The browser tests drive a uvicorn **subprocess**, which `pytest-cov` cannot
+instrument, so `tests/integration/test_main_api.py` exercises the same routes
+in-process to measure them.
 
 ### What the Playwright tests cover
 
@@ -185,8 +205,9 @@ Captured from the running application in `docs/screenshots/`:
 `.github/workflows/test.yml` runs on every push and pull request to `main`:
 
 1. **test** — spins up a Postgres service, installs dependencies, installs
-   Chromium (`playwright install --with-deps chromium`), then runs unit,
-   integration, API E2E, and Playwright E2E tests.
+   Chromium (`playwright install --with-deps chromium`), then runs the whole
+   suite (unit, integration, API E2E, Playwright E2E) and fails the build if
+   coverage of `app/` drops below 100%.
 2. **security** — builds the image and scans it with Trivy; the job fails on
    any `CRITICAL` or `HIGH` vulnerability that has a fix available.
 3. **deploy** — only on `main`, and only if the first two jobs pass: logs in to

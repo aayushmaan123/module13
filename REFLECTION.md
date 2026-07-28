@@ -126,18 +126,52 @@ evidence about the paths you thought of.
   `.dockerignore` so the local `venv/` and coverage output stay out of the
   image.
 
+### 6. Getting to 100% coverage
+
+Coverage started at 68%, with `app/main.py` reporting 0% — not because it was
+untested, but because the E2E tests exercise it in a *subprocess* that
+`pytest-cov` cannot instrument. Adding `tests/integration/test_main_api.py`,
+which drives the same routes in-process with `TestClient`, took `main.py` from
+0% to 100% on its own and runs in a fraction of the time a browser takes.
+
+The rest came from `tests/integration/test_auth_internals.py` (token decoding,
+expiry, revocation, the Redis blacklist behind a fake client) and
+`tests/unit/test_model_schema_edges.py` (the model guard clauses that FastAPI's
+validation normally rejects long before they run). The suite is now 204 tests,
+and CI fails the build below 100% via `--cov-fail-under=100`.
+
+Two things were worth more than the number itself.
+
+First, chasing the last few lines found **dead code**. Three checks could never
+execute: `UserCreate.validate_password_strength` re-checked a length the
+field's `min_length=8` had already enforced, and both calculation schemas
+re-checked a list length already enforced by `min_items=2`. Pydantic runs field
+constraints before model validators, so those branches were unreachable. I
+removed them rather than marking them `# pragma: no cover` — a coverage tool
+that reports 100% while the source contains lines that cannot run is telling a
+comfortable lie. Notably, one of them raised a *different* message than the one
+users actually receive, so the dead code was also misleading documentation.
+
+Second, the new async tests failed only in the full suite, passing in
+isolation: `asyncio.run() cannot be called from a running event loop`.
+Playwright's session-scoped `sync_playwright` keeps a loop running on the main
+thread. Running those coroutines on a worker thread with its own loop fixed it.
+That is the second time this module that a test failed purely because of what
+*else* was running — a good argument for never trusting a green run of a single
+file.
+
 ## What I would do differently
 
-Coverage sits at 68%, and `app/main.py` reports 0% — not because it is
-untested, but because the E2E tests exercise it in a *subprocess* that
-`pytest-cov` cannot see. The honest fix is a set of `TestClient`-based route
-tests in `tests/integration/`, which would both raise the real number and run
-far faster than a browser.
-
-I would also consider deriving the client-side password rules from a single
-source rather than hand-copying them into JavaScript — serving the rules from
-an endpoint, or generating the regex — so the drift I hit in challenge 2 cannot
+I would consider deriving the client-side password rules from a single source
+rather than hand-copying them into JavaScript — serving the rules from an
+endpoint, or generating the regex — so the drift I hit in challenge 2 cannot
 happen again.
+
+I would also treat 100% as a floor rather than a finish line. Statement
+coverage says every line ran, not that every line was *checked*: none of it
+would have caught the password-rule mismatch if I had not asserted on the
+specific behaviour. The bugs in this module were found by tests that asserted
+what users see, not by the coverage percentage.
 
 ## Takeaway
 

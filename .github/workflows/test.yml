@@ -54,17 +54,14 @@ jobs:
         run: |
           source venv/bin/activate
 
-          # 1) Unit tests
-          pytest tests/unit/ --cov=app --junitxml=test-results/junit.xml
-
-          # 2) Integration tests
-          pytest tests/integration/
-
-          # 3) E2E API tests (live server over HTTP)
-          pytest tests/e2e/test_fastapi_calculator.py
-
-          # 4) Playwright browser E2E tests (register / login UI)
-          pytest tests/e2e/test_auth_playwright.py -m e2e
+          # One run covers unit, integration, API e2e, and the Playwright
+          # browser tests. Coverage is measured across the whole suite and the
+          # build fails if it drops below 100%.
+          pytest -v \
+            --cov=app \
+            --cov-report=term-missing \
+            --cov-fail-under=100 \
+            --junitxml=test-results/junit.xml
 
   security:
     needs: test

@@ -42,9 +42,12 @@ class CalculationBase(BaseModel):
 
     @model_validator(mode='after')
     def validate_inputs(self) -> "CalculationBase":
-        """Validate inputs based on calculation type"""
-        if len(self.inputs) < 2:
-            raise ValueError("At least two numbers are required for calculation")
+        """
+        Validate inputs based on calculation type.
+
+        The minimum length is enforced by the field's min_items constraint,
+        which runs first, so there is no length check here.
+        """
         if self.type == CalculationType.DIVISION:
             # Prevent division by zero (skip the first value as numerator)
             if any(x == 0 for x in self.inputs[1:]):
@@ -88,12 +91,8 @@ class CalculationUpdate(BaseModel):
         min_items=2
     )
 
-    @model_validator(mode='after')
-    def validate_inputs(self) -> "CalculationUpdate":
-        """Validate the inputs if they are being updated"""
-        if self.inputs is not None and len(self.inputs) < 2:
-            raise ValueError("At least two numbers are required for calculation")
-        return self
+    # No model validator here: the min_items constraint on the field already
+    # rejects a list shorter than two, and None is explicitly allowed.
 
     model_config = ConfigDict(
         from_attributes=True,
