@@ -227,6 +227,29 @@ def test_register_password_mismatch_shows_client_error(page: Page, base_url: str
 
 
 @pytest.mark.e2e
+def test_register_succeeds_after_correcting_a_mismatch(page: Page, base_url: str):
+    """
+    Regression test: the confirm-password field sets a custom validity message
+    when the two fields differ. If that message is not cleared once the user
+    fixes the values, the browser blocks the submit and nothing happens at all.
+    """
+    user = make_user()
+
+    page.goto(f"{base_url}/register")
+    user["confirm_password"] = "Mismatched1!"
+    fill_registration_form(page, user)
+    page.click("#registrationForm button[type='submit']")
+    expect(page.locator("#errorMessage")).to_contain_text("do not match")
+
+    # Correct the confirmation and submit again.
+    page.fill("#confirm_password", user["password"])
+    page.click("#registrationForm button[type='submit']")
+
+    expect(page.locator("#successAlert")).to_be_visible()
+    expect(page.locator("#successMessage")).to_contain_text("Registration successful")
+
+
+@pytest.mark.e2e
 def test_register_short_username_shows_client_error(page: Page, base_url: str):
     user = make_user()
     user["username"] = "ab"

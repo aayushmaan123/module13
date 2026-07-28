@@ -153,13 +153,30 @@ which is useful when a test fails for a server-side reason.
   `/auth/register`.
 - Password with no special character → client-side error, no request sent.
 - Invalid email format → client-side error.
-- Mismatched confirm password → client-side error.
+- Mismatched confirm password → client-side error, and correcting it then
+  submits successfully (regression test).
 - Username under 3 characters → client-side error.
 - Duplicate registration → server returns `400`, UI shows the error alert.
 - Wrong password → server returns `401`, UI shows "Invalid username or
   password", and nothing is stored in `localStorage`.
 - Unknown username → server returns `401`, UI shows the error.
 - Empty login fields → client-side error, no request sent.
+
+---
+
+## Screenshots
+
+Captured from the running application in `docs/screenshots/`:
+
+| File | Shows |
+|------|-------|
+| `01-register-page.png` | Registration page |
+| `02-register-validation-error.png` | Client-side validation rejecting a weak password |
+| `03-register-success.png` | Successful registration |
+| `04-login-page.png` | Login page |
+| `05-login-invalid-credentials.png` | 401 surfaced as an "invalid credentials" alert |
+| `06-login-success.png` | Successful login |
+| `07-dashboard.png` | Dashboard reached with the stored JWT |
 
 ---
 

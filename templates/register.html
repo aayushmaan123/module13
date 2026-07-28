@@ -194,20 +194,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Real-time password match validation
-    const passwordInput = form.password;
-    const confirmPasswordInput = form.confirm_password;
-
-    function validatePasswordMatch() {
-        if (confirmPasswordInput.value && passwordInput.value !== confirmPasswordInput.value) {
-            confirmPasswordInput.setCustomValidity("Passwords don't match");
-        } else {
-            confirmPasswordInput.setCustomValidity('');
-        }
-    }
-
-    passwordInput.addEventListener('change', validatePasswordMatch);
-    confirmPasswordInput.addEventListener('keyup', validatePasswordMatch);
+    // A mismatched confirmation is reported by the submit handler above, using
+    // the same error alert as every other validation failure.
+    //
+    // This previously called setCustomValidity() on the confirm field, which
+    // made the browser block the submit natively - so the page's own error
+    // alert never appeared, and a stale message (the listener fired on 'keyup'
+    // only, so pasted values never cleared it) could block submission with no
+    // visible explanation at all. One reporting path is clearer and testable.
 });
 </script>
 {% endblock %}

@@ -23,7 +23,7 @@ broken form, a typo in a field id, or a token that is never written to
 targeted a calculator UI with `#a` and `#b` inputs that does not exist in these
 templates, and the `.bk` extension meant pytest never collected it.
 
-I wrote `tests/e2e/test_auth_playwright.py` with 15 tests that drive real
+I wrote `tests/e2e/test_auth_playwright.py` with 16 tests that drive real
 Chromium. The distinction I cared about most was *where* a rejection happens.
 For client-side rules I attach a `page.on("request", ...)` listener and assert
 that no request to `/auth/register` was ever made — that proves the browser
@@ -77,7 +77,35 @@ This one was worth the time it took: the failure looked like flaky Playwright
 timing, and the tempting "fix" was to raise the timeout. That would have hidden
 a genuine bug that gets worse as the suite grows.
 
-### 4. Environment and pipeline details
+### 4. A form that refused to submit and said nothing
+
+While capturing screenshots I found a third front-end defect. The confirm
+password field called `setCustomValidity("Passwords don't match")`, and the
+listener that cleared it fired on `keyup` only. Any value that arrives without
+a keystroke — a paste, a password manager, a script — left the message set. The
+browser then blocked the submit natively: no request, no error alert, no
+explanation. The form simply stopped working.
+
+My first fix was to listen on `input` instead, which does fire for pastes. That
+cleared the stale state, but it exposed a second problem: when the passwords
+genuinely differ, native validation blocks the submit before the page's own
+handler runs, so the mismatch is reported by a browser tooltip while every
+other validation failure uses the page's red alert box. Two different reporting
+mechanisms for the same class of error, only one of which a test can see.
+
+I removed the custom validity entirely. The submit handler already checks for a
+mismatch and calls `showError('Passwords do not match')`, so there is now one
+path, it is consistent with every other rule, and it is assertable. I added
+`test_register_succeeds_after_correcting_a_mismatch` to pin the behaviour: fail
+the match, fix it, submit successfully.
+
+Worth noting that this bug was invisible to my own test suite before I hit it —
+my tests happened to fill the password field before the confirm field, the one
+order in which the stale message never got set. I found it only because the
+screenshot script filled the fields in a different order. Passing tests are
+evidence about the paths you thought of.
+
+### 5. Environment and pipeline details
 
 - **`aioredis` on modern Python.** The pinned `aioredis==2.0.1` fails to import
   on Python 3.11+ with `duplicate base class TimeoutError`. Because
