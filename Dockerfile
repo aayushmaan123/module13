@@ -1,4 +1,6 @@
-FROM python:3.10-slim
+# 3.12: the patched cryptography/cffi releases that clear the Trivy scan
+# publish no wheels for 3.10.
+FROM python:3.12-slim
 
 # Set environment variables for Python
 ENV PYTHONDONTWRITEBYTECODE=1 \
