@@ -1,0 +1,120 @@
+# Module 13 Reflection
+
+## What I set out to do
+
+Add JWT registration and login with working front-end pages, prove both flows
+with Playwright browser tests, and keep the Docker-based CI/CD pipeline pushing
+a verified image to Docker Hub.
+
+The starter repository already contained a lot of this: the `/auth/register`
+and `/auth/login` endpoints, the Pydantic schemas, bcrypt hashing, and the
+`register.html` / `login.html` templates with client-side validation. My work
+concentrated on the parts that were missing or broken — the browser tests, the
+pipeline, and three real defects that only surfaced once the tests ran.
+
+## Challenges
+
+### 1. The "E2E tests" were not end-to-end through the browser
+
+`tests/e2e/test_fastapi_calculator.py` uses `requests` to call the API. That is
+a useful integration test, but it never loads a page, so it cannot catch a
+broken form, a typo in a field id, or a token that is never written to
+`localStorage`. The one Playwright example in the repo (`tests/e2e/test_e2e.bk`)
+targeted a calculator UI with `#a` and `#b` inputs that does not exist in these
+templates, and the `.bk` extension meant pytest never collected it.
+
+I wrote `tests/e2e/test_auth_playwright.py` with 15 tests that drive real
+Chromium. The distinction I cared about most was *where* a rejection happens.
+For client-side rules I attach a `page.on("request", ...)` listener and assert
+that no request to `/auth/register` was ever made — that proves the browser
+blocked it rather than the server. For server-side rules I use
+`page.expect_response()` and assert the actual status code (400 for a duplicate
+user, 401 for a bad password) *and* that the UI surfaces the message. Asserting
+only on visible text would pass even if the status code were wrong.
+
+### 2. Client and server disagreed about what a valid password is
+
+My first run failed on every registration test. The browser accepted the
+password and sent the request; the server returned `422`. The front-end's
+`isValidPassword()` checked for 8 characters, an uppercase, a lowercase, and a
+digit — but `UserCreate.validate_password_strength` in `app/schemas/user.py`
+*also* requires a special character.
+
+A real user typing `SecurePass123` would pass every visible check, submit, and
+get an unhelpful error. Worse, FastAPI returns `detail` as a *list of error
+objects* for a 422, while the page's handler did `new Error(data.detail)` — so
+the alert would have read `[object Object]`.
+
+I fixed both: `isValidPassword()` now mirrors the server rule exactly (with a
+comment pointing at the schema so the two stay linked), and a new
+`extractErrorMessage()` helper normalizes both the string form and the list
+form of `detail` into readable text.
+
+The lesson is that duplicated validation logic is duplicated *drift*. The two
+copies exist for good reasons — the client copy gives instant feedback, the
+server copy is the one that actually protects the database — but nothing forces
+them to agree, so the tests have to.
+
+### 3. The test server froze partway through the suite
+
+The most interesting bug. With all 15 tests running, the last two failed with
+`Page.goto: Timeout 30000ms exceeded` — but only the last two, and only when
+the whole file ran. Running them alone passed.
+
+The `fastapi_server` fixture in `tests/conftest.py` launched uvicorn with
+`stdout=subprocess.PIPE, stderr=subprocess.PIPE` and then never read from those
+pipes. Every request writes an access-log line. Once the OS pipe buffer filled,
+uvicorn blocked on its next write and stopped serving. The server had not
+crashed — it was stuck, which is why the symptom was a navigation timeout
+rather than a connection error.
+
+I redirected the server's output to `test-server.log` instead, since writing to
+a file never blocks, and kept the log readable so a startup failure still
+reports the underlying uvicorn error. The whole file then passed in 31 seconds
+instead of timing out at 92.
+
+This one was worth the time it took: the failure looked like flaky Playwright
+timing, and the tempting "fix" was to raise the timeout. That would have hidden
+a genuine bug that gets worse as the suite grows.
+
+### 4. Environment and pipeline details
+
+- **`aioredis` on modern Python.** The pinned `aioredis==2.0.1` fails to import
+  on Python 3.11+ with `duplicate base class TimeoutError`. Because
+  `app/auth/jwt.py` imports `app/auth/redis.py`, this breaks the entire app,
+  not just token blacklisting. `redis-py` ships the same asyncio client as
+  `redis.asyncio`, so aliasing it kept the module's API identical.
+- **`bcrypt` was not pinned.** `passlib` needs a backend; without it, hashing
+  fails at runtime rather than at install time.
+- **`uvicorn` resolution.** My first local run failed with
+  `ServerStartupError` because the fixture shells out to `uvicorn` by name, and
+  PATH resolved it to a different Python installation. Worth remembering that a
+  subprocess does not inherit "which interpreter is running pytest".
+- **Pipeline corrections.** The workflow measured coverage against a `src`
+  directory that does not exist (`--cov=src` → `--cov=app`), and installed
+  Playwright without system dependencies (`playwright install` →
+  `playwright install --with-deps chromium`, which the GitHub runner needs). I
+  also pointed the deploy tags at my own Docker Hub repository and added a
+  `.dockerignore` so the local `venv/` and coverage output stay out of the
+  image.
+
+## What I would do differently
+
+Coverage sits at 68%, and `app/main.py` reports 0% — not because it is
+untested, but because the E2E tests exercise it in a *subprocess* that
+`pytest-cov` cannot see. The honest fix is a set of `TestClient`-based route
+tests in `tests/integration/`, which would both raise the real number and run
+far faster than a browser.
+
+I would also consider deriving the client-side password rules from a single
+source rather than hand-copying them into JavaScript — serving the rules from
+an endpoint, or generating the regex — so the drift I hit in challenge 2 cannot
+happen again.
+
+## Takeaway
+
+Every defect I found this module was invisible to the API-level tests and
+visible the moment a browser was involved: a validator that disagreed with its
+server, an error path that would have rendered `[object Object]`, and a server
+that quietly wedged itself under sustained load. End-to-end tests earn their
+cost by failing in ways unit tests structurally cannot.

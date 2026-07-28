@@ -1,0 +1,31 @@
+# Local virtualenvs - never ship these into the image
+venv/
+.venv/
+env/
+
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Test and coverage output
+htmlcov/
+.coverage
+coverage.xml
+test-results/
+test-server.log
+playwright-report/
+
+# Local environment, VCS and editor files
+.env
+.git/
+.github/
+.vscode/
+.DS_Store
+
+# Docs the runtime does not need
+README.md
+REFLECTION.md
+LICENSE
