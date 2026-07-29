@@ -50,7 +50,8 @@ mirrored in the browser by `isValidPassword()` in `templates/register.html`.
 
 ## Prerequisites
 
-- Python 3.10+
+- Python 3.11+ (the Docker image and CI both use 3.12; the patched
+  `cryptography` and `cffi` releases publish no wheels for 3.10)
 - Docker Desktop (for the database and for building the image)
 
 ---

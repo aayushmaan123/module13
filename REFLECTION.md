@@ -160,6 +160,45 @@ That is the second time this module that a test failed purely because of what
 *else* was running — a good argument for never trusting a green run of a single
 file.
 
+### 7. The pipeline failed three times for three different reasons
+
+Getting all three jobs green took four runs, and no two failures had the same
+cause. Working through them in order was the only way; each one hid the next.
+
+**Trivy blocked the build on seven vulnerable packages.** Two mattered directly
+here: `python-jose` 3.3.0 (CVE-2024-33663, CRITICAL, algorithm confusion) is
+the library signing this application's JWTs, and `h11` 0.14.0 (CVE-2025-43859,
+CRITICAL) is request smuggling in the HTTP stack. The rest were a path
+traversal in `python-multipart`, SSRF via UNC paths in `starlette`'s
+`StaticFiles`, and decompression bombs in `urllib3`. It would have been easy to
+add an ignore file and move on. Patching them was the point of having the scan.
+
+**Patching broke the app.** `starlette` had to go from 0.45.3 to 1.3.1, and
+Starlette 1.0 removed the legacy `TemplateResponse(name, {"request": request})`
+signature that all four page routes used. Every HTML route started returning
+500, which cascaded into all fifteen Playwright tests. The fix was one argument
+order per route - but I found it immediately only because the browser tests
+existed. An API-only suite would have stayed green while every page was broken.
+
+**Then the base image was too old.** The patched `cryptography` and `cffi`
+releases publish no wheels for Python 3.10, so `pip install` failed inside the
+Docker build with `ResolutionImpossible`. The Dockerfile base and the CI runner
+both moved to 3.12. Worth noting the failure mode: the build failed but the
+scan step still ran, so Trivy rescanned the *previous* image and reported the
+old findings. For a moment it looked like the upgrade had changed nothing.
+Always confirm that the thing you scanned is the thing you just built.
+
+**Finally, credentials.** The deploy job failed twice more. First
+`401 Unauthorized: access token has insufficient scopes` - the Docker Hub token
+was read-only, and notably `docker login` *succeeded* with it, because login
+needs less than push does. A green login step is not proof that a push will
+work. Then `malformed HTTP Authorization header`, a formatting problem in the
+stored secret rather than a wrong token.
+
+The general lesson: a CI pipeline that has never gone green is not one problem,
+it is a stack of them, and each layer stays invisible until the one above it
+passes.
+
 ## What I would do differently
 
 I would consider deriving the client-side password rules from a single source
